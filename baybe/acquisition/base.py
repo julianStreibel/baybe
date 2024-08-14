@@ -53,15 +53,10 @@ class AcquisitionFunction(ABC, SerialMixin):
         The required structure of `measurements` is specified in
         :meth:`baybe.recommenders.base.RecommenderProtocol.recommend`.
         """
-        import botorch.acquisition as botorch_acqf_module
-
-        # Get computational data representations
         train_x = searchspace.transform(measurements, allow_extra=True)
         train_y = objective.transform(measurements)
 
-        # Retrieve corresponding botorch class
-        acqf_cls = getattr(botorch_acqf_module, self.__class__.__name__)
-
+        acqf_cls = _get_botorch_acqf_class(self)
         # Match relevant attributes
         params_dict = match_attributes(
             self, acqf_cls.__init__, ignore=self._non_botorch_attrs
@@ -83,7 +78,19 @@ class AcquisitionFunction(ABC, SerialMixin):
 
         params_dict.update(additional_params)
 
-        return acqf_cls(**params_dict)
+        acqf = acqf_cls(**params_dict)
+        if hasattr(self, "_default_sample_shape"):
+            acqf._default_sample_shape = self._default_sample_shape
+
+        return acqf
+
+
+def _get_botorch_acqf_class(baybe_acqf: AcquisitionFunction):
+    import botorch.acquisition as botorch_acqf_module
+
+    for cls in baybe_acqf.__class__.mro():
+        if acqf_cls := getattr(botorch_acqf_module, cls.__name__, False):
+            return acqf_cls
 
 
 # Register de-/serialization hooks
